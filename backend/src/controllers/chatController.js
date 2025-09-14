@@ -1,7 +1,8 @@
 // src/controllers/chatController.js
 
 import { handleChatMessage } from '../services/llmService.js';
-import { getProvider } from "../services/providerFactory.js";
+import { fetchAndShapeResults } from '../services/retrievalService.js';
+import { getProvider } from '../services/providerFactory.js';
 
 // export async function handleChat(req, res) {
 //   try {
@@ -52,31 +53,59 @@ import { getProvider } from "../services/providerFactory.js";
 //   }
 // };
 
-export const sendMessage = async (req, res) => {
+export const sendMessageSSE = async (req, res) => {
   try {
     const { messages, modelProvider, modelName } = req.body;
 
-    // Get the right adapter (OpenAI / Groq)
+    // Setup SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    res.flushHeaders();
+
+    // Step 1: Fetch tool content from MCP
+    const lastUserMessage = messages[messages.length - 1]?.content || '';
+    const toolMessage = await fetchAndShapeResults(lastUserMessage);
+
+    const finalMessages = [...messages];
+    if (toolMessage) {
+      finalMessages.push(toolMessage);
+
+      // Stream tool message immediately
+      res.write(
+        `event: tool_call\ndata: ${JSON.stringify({ content: toolMessage.content })}\n\n`
+      );
+    }
+
+    // Step 2: Get provider adapter
     const provider = getProvider(modelProvider);
 
-    // Non-streaming request
-    const response = await provider.requestCompletion({
+    // Step 3: Request LLM completion with streaming
+    await provider.requestCompletion({
       model: modelName,
-      messages,
-      stream: false, // 🚫 No streaming
-    });
-
-    // Send back normal JSON so Postman can read it
-    return res.json({
-      provider: modelProvider,
-      reply: response.content || response,
+      messages: finalMessages,
+      stream: true,
+      onToken: (token) => {
+        res.write(`event: token\ndata: ${JSON.stringify({ token })}\n\n`);
+      },
+      onFinish: () => {
+        res.write(`event: done\ndata: {}\n\n`);
+        res.end();
+      },
+      onError: (err) => {
+        console.error('Provider error:', err);
+        res.write(`event: provider_error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+      },
     });
   } catch (err) {
-    console.error("❌ ChatController Error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error('❌ Chat SSE error:', err);
+    res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.end();
   }
 };
-
 
 import { searchEntries } from "../services/contentstackService.js";
 
