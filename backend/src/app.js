@@ -3,6 +3,7 @@
 import express from "express";
 import cors from "cors";
 import chatRoutes from "./routes/chatRoutes.js";
+import embeddingRoutes from "./routes/embeddingRoutes.js";
 
 const app = express();
 
@@ -18,5 +19,6 @@ app.get("/ping", (req, res) => {
 // Routes
 app.use("/chat", chatRoutes);
 
+app.use("/api/embed", embeddingRoutes);
 
 export default app;

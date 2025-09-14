@@ -1,12 +1,12 @@
 // // src/routes/chatRoutes.js
 import express from "express";
 import { searchEntries } from "../services/contentstackService.js";
-import { sendMessage } from '../controllers/chatController.js';
+import { sendMessageSSE } from '../controllers/chatController.js';
 
 const router = express.Router();
 
 
-router.post('/send', sendMessage);
+router.post('/send', sendMessageSSE);
 
 
 

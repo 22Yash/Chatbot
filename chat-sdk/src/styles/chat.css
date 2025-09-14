@@ -1,0 +1,10 @@
+.chat-widget { border: 1px solid #ccc; width: 300px; height: 400px; display: flex; flex-direction: column; }
+.chat-window { flex: 1; padding: 8px; overflow-y: auto; }
+.message { margin: 4px 0; }
+.message.user { text-align: right; color: blue; }
+.message.assistant { text-align: left; color: green; }
+.message.system { text-align: center; color: red; }
+.composer { display: flex; }
+.composer input { flex: 1; padding: 4px; }
+.composer button { padding: 4px 8px; }
+.typing { font-style: italic; color: gray; }
