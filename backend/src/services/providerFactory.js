@@ -1,15 +1,18 @@
-// src/services/providers/providerFactory.js
-import { openaiAdapter } from "../services/openaiAdapter.js";
-import { groqAdapter } from "../services/groqAdapter.js";
+import { OpenAIAdapter } from './openaiAdapter.js';
+import { GroqAdapter } from './groqAdapter.js';
 
-export function getProvider(provider) {
-  switch (provider) {
-    case "openai":
-      return openaiAdapter;
-    case "groq":
-      return groqAdapter;
+export function getProvider(providerName) {
+  switch (providerName?.toLowerCase()) {
+    case 'groq':
+      return new GroqAdapter();
+    case 'openai':
     default:
-      throw new Error("Unsupported provider: " + provider);
+      return new OpenAIAdapter();
   }
 }
 
+// Optional helper for fallback
+export function getFallbackProvider(currentProvider) {
+  if (currentProvider.toLowerCase() === 'openai') return new GroqAdapter();
+  return new OpenAIAdapter();
+}

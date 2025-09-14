@@ -1,19 +1,24 @@
+// src/services/embeddingService.js
 import OpenAI from "openai";
 import { pinecone } from "../config/pinecone.js";
 import { env } from "../config/env.js";
 
 const openai = new OpenAI({ apiKey: env.openaiApiKey });
 
-// Helper: generate random vector for mock embeddings
+/**
+ * Generate mock vector if OpenAI fails
+ */
 function generateMockVector(dim = 1536) {
   return Array(dim).fill(0).map(() => Math.random());
 }
 
+/**
+ * Create embedding for text and upsert into Pinecone
+ */
 export async function embedAndUpsert(id, text) {
   let vector;
 
   try {
-    // Try OpenAI embeddings
     const embedding = await openai.embeddings.create({
       model: env.embedModel,
       input: text,
@@ -24,16 +29,22 @@ export async function embedAndUpsert(id, text) {
     vector = generateMockVector();
   }
 
-  // Upsert into Pinecone
   const index = pinecone.Index(env.pineconeIndex);
   await index.upsert([
-    { id, values: vector, metadata: { text } },
+    {
+      id,
+      values: vector,
+      metadata: { text },
+    },
   ]);
 
   console.log(`✅ Upserted vector for: ${id}`);
 }
 
-export async function search(query, topK = 3) {
+/**
+ * Search Pinecone by user query
+ */
+export async function search(query, topK = 5) {
   let vector;
 
   try {
@@ -54,5 +65,17 @@ export async function search(query, topK = 3) {
     includeMetadata: true,
   });
 
-  return results.matches;
+  return results.matches || [];
+}
+
+/**
+ * Helper: fetch top-K relevant texts as a single string for LLM context
+ */
+export async function getRelevantTexts(query, topK = 5) {
+  const matches = await search(query, topK);
+  if (!matches.length) return null;
+
+  return matches
+    .map((m, i) => `${i + 1}. ${m.metadata.text}`)
+    .join("\n");
 }
