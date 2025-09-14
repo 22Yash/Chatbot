@@ -1,18 +1,16 @@
 // // src/routes/chatRoutes.js
-// import express from "express";
-// import { handleChat } from "../controllers/chatController.js";
-
-// const router = express.Router();
-
-// // POST /api/chat
-// router.post("/", handleChat);
-
-// export default router;
-
-
 import express from "express";
 import { searchEntries } from "../services/contentstackService.js";
+import { sendMessage } from '../controllers/chatController.js';
+
 const router = express.Router();
+
+
+router.post('/send', sendMessage);
+
+
+
+
 
 // GET /chat/tours?country=India
 router.get("/tours", async (req, res) => {

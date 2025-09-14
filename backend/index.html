@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <h3>Chat Test</h3>
+    <div id="chat"></div>
+    <script>
+      async function startChat() {
+        const res = await fetch("http://localhost:3000/chat/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+  "messages": [{ "role": "user", "content": "lsit out 10 indian city" }],
+  "modelProvider": "groq",
+  "modelName": "llama-3.1-8b-instant"
+})
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          document.getElementById("chat").innerText += decoder.decode(value);
+        }
+      }
+      startChat();
+    </script>
+  </body>
+</html>

@@ -1,9 +1,15 @@
 // src/services/providers/providerFactory.js
-import { getGroqResponse } from "./groqAdapter.js";
-import { getOpenAIResponse } from "./openaiAdapter.js";
+import { openaiAdapter } from "../services/openaiAdapter.js";
+import { groqAdapter } from "../services/groqAdapter.js";
 
-export function getLLMResponse(provider, message) {
-  if (provider === "groq") return getGroqResponse(message);
-  if (provider === "openai") return getOpenAIResponse(message);
-  throw new Error("Unsupported provider: " + provider);
+export function getProvider(provider) {
+  switch (provider) {
+    case "openai":
+      return openaiAdapter;
+    case "groq":
+      return groqAdapter;
+    default:
+      throw new Error("Unsupported provider: " + provider);
+  }
 }
+

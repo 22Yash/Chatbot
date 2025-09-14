@@ -1,23 +1,25 @@
 // src/services/openaiAdapter.js
 import OpenAI from "openai";
 
-export async function getOpenAIResponse(userMessage) {
-  try {
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
+export const openaiAdapter = {
+  async requestCompletion({ model = "gpt-4o-mini", messages, stream = false, onToken }) {
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: userMessage }
-      ]
+      model,
+      messages,
+      stream,
     });
 
-    return response.choices[0].message.content;
-  } catch (err) {
-    console.error("❌ OpenAI Error:", err);
-    throw new Error("Failed to fetch response from OpenAI");
-  }
-}
+    if (stream) {
+      // for await (const chunk of response) {
+      //   const token = chunk.choices[0]?.delta?.content || "";
+      //   if (token && onToken) onToken(token);
+      // }
+    } else {
+      return response.choices[0].message;
+    }
+  },
+};
