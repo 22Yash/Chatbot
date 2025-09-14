@@ -19,11 +19,14 @@
 
 import { searchEntries } from "../services/contentstackService.js";
 
-export const testContent = async (req, res) => {
+export const getTours = async (req, res) => {
   try {
-    const data = await searchEntries("tour", {}); // no filters → fetch all
-    res.json(data);
+    // Take filters from query string
+    const filters = req.query; // e.g. { Country: "India" }
+    const tours = await searchEntries("tour", filters);
+    res.json(tours);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch from Contentstack" });
+    console.error("Error in getTours:", err.response?.data || err.message);
+    res.status(500).json({ error: "Failed to fetch tours" });
   }
 };
