@@ -1,7 +1,12 @@
 // src/controllers/chatController.js
 
 import { fetchAndShapeResults } from '../services/retrievalService.js';
-import { getProvider, getFallbackProvider } from '../services/providerFactory.js';
+import { 
+  getProvider, 
+  getFallbackProvider, 
+  getModelForProvider  // ⬅️ add this
+} from '../services/providerFactory.js';
+
 import { searchEntries } from '../services/contentstackService.js';
 
 /**
@@ -27,7 +32,11 @@ export const sendMessageSSE = async (req, res) => {
     // Append tool results if available
     const finalMessages = [...messages];
     if (toolMessage) {
-      finalMessages.push(toolMessage);
+      finalMessages.push({
+        role: toolMessage.role,
+        content: toolMessage.content,
+        name: toolMessage.name || undefined,
+      });
 
       // Stream tool message immediately
       res.write(
@@ -37,11 +46,14 @@ export const sendMessageSSE = async (req, res) => {
 
     // --- 2️⃣ Get LLM provider adapter ---
     let provider = getProvider(modelProvider);
+    let hasTriedFallback = false;
 
     // Helper to request LLM completion with fallback logic
-    const requestCompletionWithFallback = async (prov) => {
+    const requestCompletionWithFallback = async (currentProvider, isRetry = false) => {
       try {
-        await prov.requestCompletion({
+        console.log(`🤖 Using provider: ${currentProvider.constructor.name}`);
+        
+        await currentProvider.requestCompletion({
           model: modelName,
           messages: finalMessages,
           stream: true,
@@ -53,26 +65,45 @@ export const sendMessageSSE = async (req, res) => {
             res.end();
           },
           onError: async (err) => {
-            console.error('Provider error:', err);
+            console.error(`❌ ${currentProvider.constructor.name} error:`, err.message);
 
-            // If OpenAI quota exceeded, switch to fallback provider (e.g., Groq)
-            if (
-              (err.code === 'insufficient_quota' || err.status === 429) &&
-              prov.constructor.name === 'OpenAIAdapter'
-            ) {
-              console.log('⚠️ OpenAI quota exceeded, switching to Groq...');
-              const fallback = getFallbackProvider('openai');
-              await requestCompletionWithFallback(fallback);
-            } else {
+            // Check if we should try fallback
+            const shouldTryFallback = !hasTriedFallback && 
+              (err.code === 'insufficient_quota' || 
+               err.status === 429 || 
+               err.message?.includes('quota') ||
+               err.message?.includes('rate limit'));
+
+            if (shouldTryFallback && currentProvider.constructor.name === 'OpenAIAdapter') {
+              console.log('🔄 OpenAI quota exceeded, switching to Groq...');
+              hasTriedFallback = true;
+              
+              // Send fallback notification to client
               res.write(
-                `event: provider_error\ndata: ${JSON.stringify({ error: err.message })}\n\n`
+                `event: provider_switch\ndata: ${JSON.stringify({ 
+                  from: 'OpenAI', 
+                  to: 'Groq', 
+                  reason: 'quota_exceeded' 
+                })}\n\n`
+              );
+
+              const fallback = getFallbackProvider('openai');
+              const mappedModel = getModelForProvider(modelName, 'groq');
+              await requestCompletionWithFallback(fallback, true, mappedModel);
+            } else {
+              // No fallback available or fallback also failed
+              res.write(
+                `event: error\ndata: ${JSON.stringify({ 
+                  error: err.message,
+                  provider: currentProvider.constructor.name
+                })}\n\n`
               );
               res.end();
             }
           },
         });
       } catch (err) {
-        console.error('SSE fatal error:', err);
+        console.error('❌ Fatal completion error:', err);
         res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
         res.end();
       }
@@ -82,7 +113,10 @@ export const sendMessageSSE = async (req, res) => {
     await requestCompletionWithFallback(provider);
 
   } catch (err) {
-    console.error('❌ Chat SSE error:', err);
+    console.error('❌ Chat SSE fatal error:', err);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+    }
     res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
     res.end();
   }

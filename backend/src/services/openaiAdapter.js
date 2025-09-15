@@ -5,7 +5,7 @@ export class OpenAIAdapter {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
-  async requestCompletion({ model = "gpt-4o-mini", messages, stream = false, onToken }) {
+  async requestCompletion({ model = "gpt-4o-mini", messages, stream = false, onToken, onFinish, onError }) {
     try {
       const response = await this.client.chat.completions.create({
         model,
@@ -14,16 +14,39 @@ export class OpenAIAdapter {
       });
 
       if (stream) {
-        for await (const chunk of response) {
-          const token = chunk.choices[0]?.delta?.content || "";
-          if (token && onToken) onToken(token);
+        try {
+          for await (const chunk of response) {
+            const token = chunk.choices[0]?.delta?.content || "";
+            if (token && onToken) {
+              onToken(token);
+            }
+            
+            // Check if stream is finished
+            if (chunk.choices[0]?.finish_reason) {
+              if (onFinish) onFinish();
+              break;
+            }
+          }
+        } catch (streamError) {
+          console.error('OpenAI streaming error:', streamError);
+          if (onError) {
+            onError(streamError);
+          } else {
+            throw streamError;
+          }
         }
       } else {
-        return response.choices[0].message;
+        const result = response.choices[0].message;
+        if (onFinish) onFinish();
+        return result;
       }
     } catch (err) {
-      // Bubble up error for fallback handling
-      throw err;
+      console.error('OpenAI adapter error:', err);
+      if (onError) {
+        onError(err);
+      } else {
+        throw err;
+      }
     }
   }
 }

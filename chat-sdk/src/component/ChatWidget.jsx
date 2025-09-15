@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
-import { EventSourcePolyfill } from "event-source-polyfill";
+// src/component/ChatWidget.jsx
+import React, { useState } from "react";
 
 export function ChatWidget({ client }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const eventSourceRef = useRef(null);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -16,45 +15,70 @@ export function ChatWidget({ client }) {
     // Prepare payload
     const payload = {
       messages: [...messages, userMessage],
-      modelProvider: "openai", // or your provider
+      modelProvider: "openai", // or "groq"
       modelName: "gpt-4o-mini",
     };
 
-    // Open SSE connection
-    eventSourceRef.current = new EventSourcePolyfill(`${client.url}/chat/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const response = await fetch(`${client.url}/chat/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    eventSourceRef.current.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.token) {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            // append token to bot message
-            if (last?.role === "assistant") {
-              last.content += data.token;
-              return [...prev.slice(0, -1), last];
-            } else {
-              return [...prev, { role: "assistant", content: data.token }];
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          const chunk = decoder.decode(value);
+          const events = chunk.split("\n\n").filter(Boolean);
+
+          for (const ev of events) {
+            const match = ev.match(/^event: (\w+)\ndata: (.+)$/s);
+            if (match) {
+              const [, event, data] = match;
+              const parsed = JSON.parse(data);
+
+              if (event === "token") {
+                setMessages((prev) => {
+                  const last = prev[prev.length - 1];
+                  if (last?.role === "assistant") {
+                    last.content += parsed.token;
+                    return [...prev.slice(0, -1), last];
+                  } else {
+                    return [...prev, { role: "assistant", content: parsed.token }];
+                  }
+                });
+              }
+
+              if (event === "tool_call") {
+                setMessages((prev) => [
+                  ...prev,
+                  { role: "system", content: parsed.content },
+                ]);
+              }
+
+              if (event === "done") {
+                console.log("✅ Stream finished");
+              }
+
+              if (event === "error") {
+                console.error("❌ Backend error:", parsed.error);
+              }
             }
-          });
+          }
         }
-      } catch (err) {
-        console.error("SSE parsing error:", err);
       }
-    };
-
-    eventSourceRef.current.onerror = (err) => {
-      console.error("SSE error:", err);
-      eventSourceRef.current.close();
-    };
-
-    eventSourceRef.current.addEventListener("done", () => {
-      eventSourceRef.current.close();
-    });
+    } catch (err) {
+      console.error("❌ Streaming error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "system", content: "Connection error. Please try again." },
+      ]);
+    }
   };
 
   return (
