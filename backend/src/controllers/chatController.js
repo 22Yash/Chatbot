@@ -4,7 +4,8 @@ import { fetchAndShapeResults } from '../services/retrievalService.js';
 import { 
   getProvider, 
   getFallbackProvider, 
-  getModelForProvider  // ⬅️ add this
+  getModelForProvider,
+  getProviderName
 } from '../services/providerFactory.js';
 
 import { searchEntries } from '../services/contentstackService.js';
@@ -32,13 +33,32 @@ export const sendMessageSSE = async (req, res) => {
     // Append tool results if available
     const finalMessages = [...messages];
     if (toolMessage) {
+      const toolCallId = toolMessage.id || 'contentstack_tool';
+    
+      // 1. Assistant declares tool call
       finalMessages.push({
-        role: toolMessage.role,
-        content: toolMessage.content,
-        name: toolMessage.name || undefined,
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          {
+            id: toolCallId,
+            type: 'function',
+            function: {
+              name: 'fetch_contentstack',
+              arguments: JSON.stringify({ query: lastUserMessage }),
+            },
+          },
+        ],
       });
-
-      // Stream tool message immediately
+    
+      // 2. Tool provides result
+      finalMessages.push({
+        role: 'tool',
+        tool_call_id: toolCallId,
+        content: toolMessage.content,
+      });
+    
+      // 3. Stream tool results to client
       res.write(
         `event: tool_call\ndata: ${JSON.stringify({ content: toolMessage.content })}\n\n`
       );
@@ -50,11 +70,14 @@ export const sendMessageSSE = async (req, res) => {
 
     // Helper to request LLM completion with fallback logic
     const requestCompletionWithFallback = async (currentProvider, isRetry = false) => {
+      // Compute mapped model for this provider
+      const mappedModel = getModelForProvider(modelName || 'gpt-4o-mini', getProviderName(currentProvider));
+
       try {
         console.log(`🤖 Using provider: ${currentProvider.constructor.name}`);
-        
+
         await currentProvider.requestCompletion({
-          model: modelName,
+          model: mappedModel,
           messages: finalMessages,
           stream: true,
           onToken: (token) => {
@@ -67,29 +90,27 @@ export const sendMessageSSE = async (req, res) => {
           onError: async (err) => {
             console.error(`❌ ${currentProvider.constructor.name} error:`, err.message);
 
-            // Check if we should try fallback
-            const shouldTryFallback = !hasTriedFallback && 
-              (err.code === 'insufficient_quota' || 
-               err.status === 429 || 
+            const shouldTryFallback = !hasTriedFallback &&
+              (err.code === 'insufficient_quota' ||
+               err.status === 429 ||
                err.message?.includes('quota') ||
                err.message?.includes('rate limit'));
 
             if (shouldTryFallback && currentProvider.constructor.name === 'OpenAIAdapter') {
               console.log('🔄 OpenAI quota exceeded, switching to Groq...');
               hasTriedFallback = true;
-              
+
               // Send fallback notification to client
               res.write(
                 `event: provider_switch\ndata: ${JSON.stringify({ 
-                  from: 'OpenAI', 
-                  to: 'Groq', 
-                  reason: 'quota_exceeded' 
+                  from: 'OpenAI',
+                  to: 'Groq',
+                  reason: 'quota_exceeded'
                 })}\n\n`
               );
 
               const fallback = getFallbackProvider('openai');
-              const mappedModel = getModelForProvider(modelName, 'groq');
-              await requestCompletionWithFallback(fallback, true, mappedModel);
+              await requestCompletionWithFallback(fallback, true);
             } else {
               // No fallback available or fallback also failed
               res.write(
