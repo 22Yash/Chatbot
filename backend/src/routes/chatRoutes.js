@@ -1,7 +1,7 @@
 // // src/routes/chatRoutes.js
 import express from "express";
 import { searchEntries } from "../services/contentstackService.js";
-import { sendMessageSSE ,getTours } from '../controllers/chatController.js';
+import { sendMessageSSE ,getTours,validateStack } from '../controllers/chatController.js';
 
 const router = express.Router();
 
@@ -29,5 +29,7 @@ router.post('/send', sendMessageSSE);
 
 
 router.get("/tours", getTours);
+// New validation endpoint
+router.post('/validate-stack', validateStack);
 
 export default router;

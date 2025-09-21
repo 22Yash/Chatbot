@@ -8,15 +8,20 @@ import {
   getProviderName
 } from '../services/providerFactory.js';
 
-import { searchEntries } from '../services/contentstackService.js';
+import { searchEntries, validateStackCredentials } from '../services/contentstackService.js';
 
 /**
- * SSE-based chat endpoint with multi-provider fallback
+ * SSE-based chat endpoint with multi-provider fallback and dynamic stack support
  * Streams both tool (Contentstack) results and LLM tokens
  */
 export const sendMessageSSE = async (req, res) => {
   try {
-    const { messages, modelProvider = 'openai', modelName } = req.body;
+    const { 
+      messages, 
+      modelProvider = 'openai', 
+      modelName,
+      stackConfig // New: dynamic stack configuration
+    } = req.body;
 
     // Setup SSE headers
     res.writeHead(200, {
@@ -26,9 +31,9 @@ export const sendMessageSSE = async (req, res) => {
     });
     res.flushHeaders();
 
-    // --- 1️⃣ Fetch Contentstack-based tool results ---
+    // --- 1️⃣ Fetch Contentstack-based tool results with dynamic config ---
     const lastUserMessage = messages[messages.length - 1]?.content || '';
-    const toolMessage = await fetchAndShapeResults(lastUserMessage);
+    const toolMessage = await fetchAndShapeResults(lastUserMessage, stackConfig);
 
     // Append tool results if available
     const finalMessages = [...messages];
@@ -144,13 +149,19 @@ export const sendMessageSSE = async (req, res) => {
 };
 
 /**
- * GET /chat/tours
- * Fetch tours directly from Contentstack for filters (e.g., country)
+ * GET /chat/tours - Fetch tours directly from Contentstack for filters
+ * Now supports dynamic stack credentials
  */
 export const getTours = async (req, res) => {
   try {
     const filters = req.query || {}; // e.g. { country: "India" }
-    const tours = await searchEntries('tour', filters);
+    
+    // Extract stack config from headers or body
+    const stackConfig = req.headers['x-stack-config'] 
+      ? JSON.parse(req.headers['x-stack-config']) 
+      : null;
+
+    const tours = await searchEntries('tour', filters, stackConfig);
 
     if (!tours || tours.length === 0) {
       return res.status(404).json({ message: 'No tours found for the given filters.' });
@@ -159,6 +170,43 @@ export const getTours = async (req, res) => {
     res.json(tours);
   } catch (err) {
     console.error('Error in getTours:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to fetch tours' });
+    res.status(500).json({ error: 'Failed to fetch tours: ' + err.message });
+  }
+};
+
+/**
+ * POST /chat/validate-stack - Validate Contentstack credentials
+ */
+export const validateStack = async (req, res) => {
+  try {
+    const { stackApiKey, deliveryToken, environment } = req.body;
+
+    if (!stackApiKey || !deliveryToken) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required credentials (stackApiKey and deliveryToken)' 
+      });
+    }
+
+    const stackConfig = {
+      stackApiKey,
+      deliveryToken,
+      environment: environment || 'development'
+    };
+
+    const result = await validateStackCredentials(stackConfig);
+    
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (err) {
+    console.error('Error validating stack:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error during validation',
+      message: err.message 
+    });
   }
 };
