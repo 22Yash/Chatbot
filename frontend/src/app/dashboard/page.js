@@ -1,3 +1,5 @@
+"use client";
+
 import ConfigForm from "../../components/ConfigForm";
 import ChatPreview from "../../components/ChatPreview";
 import IntegrationSnippet from "../../components/IntegrationSnippet";
