@@ -6,6 +6,7 @@ export default function ChatPreview() {
   const [stackId, setStackId] = useState("");
   const [provider, setProvider] = useState("groq");
 
+  // Only access localStorage in the browser
   useEffect(() => {
     setStackId(localStorage.getItem("cs_stackId") || "");
     setProvider(localStorage.getItem("cs_provider") || "groq");
