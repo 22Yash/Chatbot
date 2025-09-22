@@ -1,4 +1,4 @@
-// src/controllers/chatController.js
+// src/controllers/chatController.js - DEBUG VERSION
 
 import { fetchAndShapeResults } from '../services/retrievalService.js';
 import { 
@@ -10,18 +10,19 @@ import {
 
 import { searchEntries, validateStackCredentials } from '../services/contentstackService.js';
 
-/**
- * SSE-based chat endpoint with multi-provider fallback and dynamic stack support
- * Streams both tool (Contentstack) results and LLM tokens
- */
 export const sendMessageSSE = async (req, res) => {
   try {
     const { 
       messages, 
-      modelProvider = 'openai', 
+      modelProvider = 'groq', // Changed default to groq since that's what you're using
       modelName,
-      stackConfig // New: dynamic stack configuration
+      stackConfig
     } = req.body;
+
+    console.log('🔧 DEBUG: Request received');
+    console.log('🔧 Messages length:', messages.length);
+    console.log('🔧 Stack config provided:', !!stackConfig);
+    console.log('🔧 Model provider:', modelProvider);
 
     // Setup SSE headers
     res.writeHead(200, {
@@ -31,93 +32,89 @@ export const sendMessageSSE = async (req, res) => {
     });
     res.flushHeaders();
 
-    // --- 1️⃣ Fetch Contentstack-based tool results with dynamic config ---
+    // --- 1️⃣ Fetch Contentstack results ---
     const lastUserMessage = messages[messages.length - 1]?.content || '';
+    console.log('🔧 User message:', lastUserMessage);
+    
     const toolMessage = await fetchAndShapeResults(lastUserMessage, stackConfig);
+    console.log('🔧 Tool message result:', toolMessage ? 'Found' : 'None');
+    
+    // Create clean messages array - NO TOOL MESSAGES
+    const cleanMessages = messages.map(msg => ({
+      role: msg.role === 'tool' ? 'system' : msg.role, // Convert any tool messages to system
+      content: msg.content
+    }));
 
-    // Append tool results if available
-    const finalMessages = [...messages];
-    if (toolMessage) {
-      const toolCallId = toolMessage.id || 'contentstack_tool';
-    
-      // 1. Assistant declares tool call
-      finalMessages.push({
-        role: 'assistant',
-        content: null,
-        tool_calls: [
-          {
-            id: toolCallId,
-            type: 'function',
-            function: {
-              name: 'fetch_contentstack',
-              arguments: JSON.stringify({ query: lastUserMessage }),
-            },
-          },
-        ],
+    // If we have contentstack results, add them as system context
+    if (toolMessage && toolMessage.content) {
+      cleanMessages.push({
+        role: 'system',
+        content: `IMPORTANT: You are a Contentstack-powered chatbot. Use ONLY the following data from the user's content management system to answer questions. Do not provide generic information or advice that's not based on this data:
+
+${toolMessage.content}
+
+Instructions:
+- Answer based ONLY on the content above
+- If the user asks for something not in the data, say you don't have that information in their Contentstack
+- Be concise and focus on the specific tours/content available
+- Don't add general travel advice or recommendations beyond what's in the data`
       });
-    
-      // 2. Tool provides result
-      finalMessages.push({
-        role: 'tool',
-        tool_call_id: toolCallId,
-        content: toolMessage.content,
-      });
-    
-      // 3. Stream tool results to client
+
+      // Stream tool results to client
       res.write(
         `event: tool_call\ndata: ${JSON.stringify({ content: toolMessage.content })}\n\n`
       );
     }
 
-    // --- 2️⃣ Get LLM provider adapter ---
+    console.log('🔧 Final messages count:', cleanMessages.length);
+    console.log('🔧 Message roles:', cleanMessages.map(m => m.role));
+
+    // --- 2️⃣ Get LLM provider ---
     let provider = getProvider(modelProvider);
     let hasTriedFallback = false;
 
-    // Helper to request LLM completion with fallback logic
-    const requestCompletionWithFallback = async (currentProvider, isRetry = false) => {
-      // Compute mapped model for this provider
-      const mappedModel = getModelForProvider(modelName || 'gpt-4o-mini', getProviderName(currentProvider));
+    const requestCompletionWithFallback = async (currentProvider) => {
+      const mappedModel = getModelForProvider(modelName || 'llama-3.1-8b-instant', getProviderName(currentProvider));
+      console.log('🔧 Using model:', mappedModel);
 
       try {
-        console.log(`🤖 Using provider: ${currentProvider.constructor.name}`);
-
         await currentProvider.requestCompletion({
           model: mappedModel,
-          messages: finalMessages,
+          messages: cleanMessages, // Use clean messages
           stream: true,
           onToken: (token) => {
             res.write(`event: token\ndata: ${JSON.stringify({ token })}\n\n`);
           },
           onFinish: () => {
+            console.log('🔧 Completion finished');
             res.write(`event: done\ndata: {}\n\n`);
             res.end();
           },
           onError: async (err) => {
-            console.error(`❌ ${currentProvider.constructor.name} error:`, err.message);
-
+            console.error(`❌ ${currentProvider.constructor.name} error:`, err);
+            
+            // Try fallback logic
             const shouldTryFallback = !hasTriedFallback &&
               (err.code === 'insufficient_quota' ||
                err.status === 429 ||
                err.message?.includes('quota') ||
                err.message?.includes('rate limit'));
 
-            if (shouldTryFallback && currentProvider.constructor.name === 'OpenAIAdapter') {
-              console.log('🔄 OpenAI quota exceeded, switching to Groq...');
+            if (shouldTryFallback && currentProvider.constructor.name === 'GroqAdapter') {
+              console.log('🔄 Groq quota exceeded, trying OpenAI fallback...');
               hasTriedFallback = true;
 
-              // Send fallback notification to client
               res.write(
                 `event: provider_switch\ndata: ${JSON.stringify({ 
-                  from: 'OpenAI',
-                  to: 'Groq',
+                  from: 'Groq',
+                  to: 'OpenAI',
                   reason: 'quota_exceeded'
                 })}\n\n`
               );
 
-              const fallback = getFallbackProvider('openai');
-              await requestCompletionWithFallback(fallback, true);
+              const fallback = getFallbackProvider('groq');
+              await requestCompletionWithFallback(fallback);
             } else {
-              // No fallback available or fallback also failed
               res.write(
                 `event: error\ndata: ${JSON.stringify({ 
                   error: err.message,
@@ -135,7 +132,7 @@ export const sendMessageSSE = async (req, res) => {
       }
     };
 
-    // --- 3️⃣ Start LLM request with fallback support ---
+    // --- 3️⃣ Start LLM request ---
     await requestCompletionWithFallback(provider);
 
   } catch (err) {
@@ -150,13 +147,10 @@ export const sendMessageSSE = async (req, res) => {
 
 /**
  * GET /chat/tours - Fetch tours directly from Contentstack for filters
- * Now supports dynamic stack credentials
  */
 export const getTours = async (req, res) => {
   try {
-    const filters = req.query || {}; // e.g. { country: "India" }
-    
-    // Extract stack config from headers or body
+    const filters = req.query || {};
     const stackConfig = req.headers['x-stack-config'] 
       ? JSON.parse(req.headers['x-stack-config']) 
       : null;

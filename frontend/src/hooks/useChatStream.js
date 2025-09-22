@@ -65,7 +65,8 @@ export function useChatStream({ apiBaseUrl, provider, modelName }) {
       const decoder = new TextDecoder();
 
       let assistantMsg = { role: "assistant", content: "" };
-      setMessages((prev) => [...prev, assistantMsg]);
+      let assistantMsgAdded = false;
+      let toolCallProcessed = false;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -81,20 +82,30 @@ export function useChatStream({ apiBaseUrl, provider, modelName }) {
           const evtName = rawEvent.replace("event: ", "").trim();
           const data = JSON.parse(rawData.replace("data: ", ""));
 
-          if (evtName === "token") {
-            assistantMsg.content += data.token;
-            setMessages((prev) => {
-              const updated = [...prev];
-              updated[updated.length - 1] = { ...assistantMsg };
-              return updated;
-            });
-          }
-
-          if (evtName === "tool_call") {
+          if (evtName === "tool_call" && !toolCallProcessed) {
+            // Add tool results only once
             setMessages((prev) => [
               ...prev,
               { role: "tool", content: data.content },
             ]);
+            toolCallProcessed = true;
+          }
+
+          if (evtName === "token") {
+            // Add assistant message only when we get the first token
+            if (!assistantMsgAdded) {
+              setMessages((prev) => [...prev, assistantMsg]);
+              assistantMsgAdded = true;
+            }
+            
+            assistantMsg.content += data.token;
+            setMessages((prev) => {
+              const updated = [...prev];
+              if (updated[updated.length - 1].role === "assistant") {
+                updated[updated.length - 1] = { ...assistantMsg };
+              }
+              return updated;
+            });
           }
 
           if (evtName === "provider_switch") {

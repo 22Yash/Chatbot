@@ -1,213 +1,147 @@
 // src/services/retrievalService.js
 import { searchEntries } from './contentstackService.js';
 
-// === CONFIG / TUNING CONSTANTS ===
 const TOP_K = 5;
 const SUMMARY_CHAR_LIMIT = 1500;
 
-// --- Helper function to detect content type from user query ---
+// --- Detect domain ---
 function detectContentType(userMessage) {
-  const lowerMessage = userMessage.toLowerCase();
-
-  if (
-    lowerMessage.includes('recipe') ||
-    lowerMessage.includes('cook') ||
-    lowerMessage.includes('food') ||
-    lowerMessage.includes('biryani') ||
-    lowerMessage.includes('manchurian')
-  ) {
+  const lower = userMessage.toLowerCase();
+  if (lower.includes('recipe') || lower.includes('cook') || lower.includes('food') ||
+      lower.includes('biryani') || lower.includes('manchurian') || lower.includes('paneer')) {
     return 'recipe';
   }
-
-  // Default to tour if nothing else matched
-  return 'tour';
+  return 'tour'; // default
 }
 
-// --- 1️⃣ Intent detection based on keywords ---
+// --- Intent check ---
 export function needsData(userMessage) {
   if (!userMessage) return false;
-  const lower = userMessage.toLowerCase();
-
-  // Directly check if a content type is detected
-  const contentType = detectContentType(lower);
-  if (contentType !== 'tour') {
-    return true;
-  }
-
-  // Travel/tour and recipe keywords
-  const travelKeywords = [
-    'tour', 'price', 'book', 'available', 'where', 'show',
-    'visit', 'travel', 'trip', 'destination', 'location',
-    'city', 'country', 'rome', 'mumbai', 'goa', 'pune',
-    'mahabaleshwar', 'italy', 'india'
-  ];
-
-  const recipeKeywords = [
-    'recipe', 'cook', 'ingredient', 'how to make', 'bake',
-    'cuisine', 'food', 'biryani', 'manchurian'
-  ];
-
-  const allKeywords = [...travelKeywords, ...recipeKeywords];
-  return allKeywords.some(keyword => lower.includes(keyword));
+  return detectContentType(userMessage) !== null;
 }
 
-// --- 2️⃣ Build filters from user query ---
+// --- Build filters ---
 export function buildFilters(userMessage) {
-  const filters = {}; // flat object
-  const lowerMessage = userMessage.toLowerCase();
-  const contentType = detectContentType(userMessage);
+  const filters = {};
+  const lower = userMessage.toLowerCase();
+  const type = detectContentType(userMessage);
 
-  if (contentType === 'tour') {
-    // Country extraction
-    const countries = ['Italy', 'France', 'India', 'USA', 'Spain'];
-    for (let country of countries) {
-      if (lowerMessage.includes(country.toLowerCase())) {
-        filters.country = country;
-        break;
-      }
+  if (type === 'tour') {
+    const countries = ['Italy', 'France', 'India', 'USA', 'Spain', 'Japan'];
+    for (let c of countries) {
+      if (lower.includes(c.toLowerCase())) filters.country = c;
     }
 
-    // City extraction (for tours)
     const cities = ['Rome', 'Mumbai', 'Goa', 'Mahabaleshwar', 'Pune'];
     for (let city of cities) {
-      if (lowerMessage.includes(city.toLowerCase())) {
-        filters.city = city;
-        break;
-      }
+      if (lower.includes(city.toLowerCase())) filters.city = city;
     }
 
-    // Price extraction
-    let priceMatch = lowerMessage.match(/₹\s?([\d,]+)/);
+    let priceMatch = lower.match(/₹\s?([\d,]+)/);
     if (!priceMatch) {
-      const underMatch = lowerMessage.match(/under\s+([\d,]+)/i);
+      const underMatch = lower.match(/under\s+([\d,]+)/i);
       if (underMatch) priceMatch = underMatch;
     }
-    if (priceMatch) {
-      filters.price = parseInt(priceMatch[1].replace(/,/g, ''));
-    }
+    if (priceMatch) filters.price = parseInt(priceMatch[1].replace(/,/g, ''));
+  }
 
-  } else if (contentType === 'recipe') {
-    // Cuisine extraction (for recipes)
+  if (type === 'recipe') {
     const cuisines = ['indian', 'chinese', 'italian', 'mexican'];
-    for (let cuisine of cuisines) {
-      if (lowerMessage.includes(cuisine)) {
-        filters.cuisine = cuisine;
-        break;
-      }
+    for (let c of cuisines) {
+      if (lower.includes(c)) filters.cuisine = c;
     }
-
-    // Dish name extraction with partial matching
     const dishes = ['veg manchurian', 'vegetable biryani', 'paneer butter masala'];
     for (let dish of dishes) {
-      const dishWords = dish.toLowerCase().split(' ');
-      // If user message includes any word from dish name, consider it a match
-      if (dishWords.some(word => lowerMessage.includes(word))) {
-        filters.title = dish;
-        break;
-      }
-    }
-
-    // Ingredient extraction (for recipes)
-    const ingredients = ['chicken', 'pasta', 'rice', 'cheese', 'tomato', 'onion'];
-    for (let ingredient of ingredients) {
-      if (lowerMessage.includes(ingredient)) {
-        if (!filters.ingredients) filters.ingredients = [];
-        filters.ingredients.push(ingredient);
-      }
+      if (lower.includes(dish)) filters.title = dish;
     }
   }
 
-  return filters; // flat object
+  return filters;
 }
 
-
-// --- 3️⃣ Fetch from Contentstack and shape results ---
+// --- Fetch & shape ---
 export async function fetchAndShapeResults(userMessage, stackConfig = null) {
-  console.log(`[Retrieval] Received user message: "${userMessage}"`);
+  console.log(`[Retrieval] Received: "${userMessage}"`);
 
-  if (!needsData(userMessage)) {
-    console.log("[Retrieval] No data query detected, returning default greeting.");
-    return {
-      role: 'assistant',
-      name: 'default.greeting',
-      content: "Hello! How can I help you today? You can ask about tours, prices, or destinations.",
-    };
-  }
-
-  const contentType = detectContentType(userMessage);
-  const filters = buildFilters(userMessage);
-
-  console.log("[Retrieval] Detected Content Type:", contentType);
-  console.log("[Retrieval] Built filters:", filters);
+  const type = detectContentType(userMessage);
+  let filters = buildFilters(userMessage);
+  console.log(`[Retrieval] Type: ${type}, Filters:`, filters);
 
   let entries;
   try {
-    entries = await searchEntries(contentType, filters, stackConfig);
-    console.log(`[Retrieval] Fetched ${entries?.length || 0} entries from Contentstack.`);
+    entries = await searchEntries(type, filters, stackConfig);
+    console.log(`[Retrieval] Got ${entries?.length || 0} ${type} entries`);
   } catch (err) {
-    console.error('❌ Error fetching entries from Contentstack:', err.message);
+    console.error("❌ Fetch error:", err.message);
     return {
-      role: 'tool',
-      name: 'content.search',
-      content: '__TIMEOUT__',
+      id: `${type}_error`,
+      content: `Sorry, I couldn't fetch ${type} data: ${err.message}`,
     };
   }
 
-  let filteredEntries = entries || [];
-
-  // Ingredient filtering
-  if (contentType === 'recipe' && filters.ingredients?.length > 0) {
-    filteredEntries = filteredEntries.filter(entry =>
-      filters.ingredients.every(ingredient =>
-        (entry.ingredients || '').toLowerCase().includes(ingredient)
-      )
-    );
+  if (!entries || entries.length === 0) {
+    return {
+      id: `${type}_search`,
+      content: `No ${type} results found.`,
+    };
   }
 
-  // Price filtering
-  if (contentType === 'tour' && filters.price) {
-    filteredEntries = filteredEntries.filter(e => {
-      if (typeof e.price !== "number") return false;
-      return e.price <= filters.price;
+  // --- Strict filtering for recipes ---
+  if (type === 'recipe') {
+    const lowerMsg = userMessage.toLowerCase();
+
+    // More flexible filtering - look for keywords in title, ingredients, or description
+    entries = entries.filter(e => {
+      const title = (e.title || '').toLowerCase();
+      const ingredients = (e.ingredients || '').toLowerCase();
+      const description = (e.description || '').toLowerCase();
+      const cuisine = (e.cuisine || '').toLowerCase();
+      
+      // Extract key terms from user message (remove common words like "recipe")
+      const terms = lowerMsg.replace(/recipe|food|cook|dish/g, '').trim().split(' ').filter(term => term.length > 2);
+      
+      // Check if any term matches title, ingredients, description, or cuisine
+      return terms.some(term => 
+        title.includes(term) || 
+        ingredients.includes(term) || 
+        description.includes(term) || 
+        cuisine.includes(term)
+      ) || 
+      // If no specific terms, show all recipes of the type
+      terms.length === 0;
     });
   }
 
-  if (!filteredEntries || filteredEntries.length === 0) {
+  if (entries.length === 0) {
     return {
-      role: 'tool',
-      name: 'content.search',
-      content: 'No results found',
+      id: `${type}_search`,
+      content: `No ${type} results found for "${userMessage}".`,
     };
   }
 
-  // Shape entries
-  const shapedEntries = filteredEntries.slice(0, TOP_K).map((e, idx) => {
-    if (contentType === 'tour') {
-      const title = e.title || '';
-      const city = e.city || '';
-      const country = e.country || '';
-      const price = e.price ? `₹${e.price}` : '';
+  // --- Shape results ---
+  const shaped = entries.slice(0, TOP_K).map((e, idx) => {
+    if (type === 'tour') {
+      // Use the actual field names from your Contentstack data
       const highlights = e.highlights || e.multi_line || '';
-      const url = typeof e.url === 'string' ? e.url : (e.url?.href || '');
-      return `Result ${idx+1}) ${title} — ${city}, ${country} — ${price} — Highlights: ${highlights}. [View: ${url}]`;
-    } else if (contentType === 'recipe') {
-      const title = e.title || '';
-      const cuisine = e.cuisine || '';
-      const ingredients = e.ingredients || '';
-      const instructions = e.instructions || e.steps || '';
-      return `Result ${idx+1}) ${title} — Cuisine: ${cuisine} — Ingredients: ${ingredients} — Instructions: ${instructions}`;
+      const url = e.url?.href || '';
+      return `Result ${idx + 1}) ${e.title} — ${e.city}, ${e.country} — ₹${e.price || 'N/A'} — Highlights: ${highlights}. [View: ${url}]`;
+    }
+    if (type === 'recipe') {
+      const steps = (e.steps || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return `Recipe ${idx + 1}) ${e.title} — Cuisine: ${e.cuisine || 'General'} — Description: ${e.description || ''} — Ingredients: ${e.ingredients || ''} — Steps: ${steps}`;
     }
   }).join('\n');
 
-  // Truncate if too long
-  const finalContent =
-    shapedEntries.length > SUMMARY_CHAR_LIMIT
-      ? shapedEntries.slice(0, SUMMARY_CHAR_LIMIT) + '...'
-      : shapedEntries;
+  // Add instruction to only use this data
+  const finalContent = `Available ${type}s in your Contentstack:
+
+${shaped}
+
+END OF DATA - Only use the information above to respond to the user.`;
 
   return {
-    role: 'tool',
-    name: 'content.search',
+    id: `content_${type}`,
     content: finalContent,
   };
 }
