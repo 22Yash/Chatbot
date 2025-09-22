@@ -1,9 +1,15 @@
 "use client";
+import { useEffect, useState } from "react";
 import ChatWidget from "./ChatWidget";
 
 export default function ChatPreview() {
-  const stackId = typeof window !== "undefined" ? localStorage.getItem("cs_stackId") : "";
-  const provider = typeof window !== "undefined" ? localStorage.getItem("cs_provider") : "groq";
+  const [stackId, setStackId] = useState("");
+  const [provider, setProvider] = useState("groq");
+
+  useEffect(() => {
+    setStackId(localStorage.getItem("cs_stackId") || "");
+    setProvider(localStorage.getItem("cs_provider") || "groq");
+  }, []);
 
   return (
     <div className="bg-white shadow rounded-xl p-6">
