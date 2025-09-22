@@ -1,23 +1,39 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function useChatStream({ apiBaseUrl, provider, modelName }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
-  // Helper to get stack config from localStorage
+  // Set client flag when component mounts
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // Helper to get stack config from localStorage (client-side only)
   function getStackConfig() {
-    const stackApiKey = localStorage.getItem("cs_stackApiKey");
-    const deliveryToken = localStorage.getItem("cs_deliveryToken");
-    const environment = localStorage.getItem("cs_environment") || "development";
-
-    if (stackApiKey && deliveryToken) {
-      return {
-        stackApiKey,
-        deliveryToken,
-        environment
-      };
+    // Return null if we're on the server or client hasn't mounted
+    if (typeof window === 'undefined' || !isClient) {
+      return null;
     }
+
+    try {
+      const stackApiKey = localStorage.getItem("cs_stackApiKey");
+      const deliveryToken = localStorage.getItem("cs_deliveryToken");
+      const environment = localStorage.getItem("cs_environment") || "development";
+
+      if (stackApiKey && deliveryToken) {
+        return {
+          stackApiKey,
+          deliveryToken,
+          environment
+        };
+      }
+    } catch (error) {
+      console.warn("Error accessing localStorage:", error);
+    }
+    
     return null;
   }
 
@@ -153,12 +169,21 @@ export function useChatStream({ apiBaseUrl, provider, modelName }) {
     return !!stackConfig;
   }
 
-  // Helper to clear configuration
+  // Helper to clear configuration (client-side only)
   function clearStackConfig() {
-    localStorage.removeItem("cs_stackApiKey");
-    localStorage.removeItem("cs_deliveryToken");
-    localStorage.removeItem("cs_environment");
-    localStorage.removeItem("cs_provider");
+    if (typeof window === 'undefined' || !isClient) {
+      console.warn("clearStackConfig called on server side");
+      return;
+    }
+
+    try {
+      localStorage.removeItem("cs_stackApiKey");
+      localStorage.removeItem("cs_deliveryToken");
+      localStorage.removeItem("cs_environment");
+      localStorage.removeItem("cs_provider");
+    } catch (error) {
+      console.warn("Error clearing localStorage:", error);
+    }
   }
 
   return { 
@@ -167,6 +192,7 @@ export function useChatStream({ apiBaseUrl, provider, modelName }) {
     loading, 
     isStackConfigured,
     clearStackConfig,
-    stackConfig: getStackConfig()
+    stackConfig: getStackConfig(),
+    isClient // Expose this so components know when client has mounted
   };
 }

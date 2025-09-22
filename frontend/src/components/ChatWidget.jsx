@@ -74,7 +74,7 @@ export default function ChatWidget({
   stackId,
   modelName = "gpt-4o-mini",
 }) {
-  const { messages, sendMessage, loading, isStackConfigured } = useChatStream({
+  const { messages, sendMessage, loading, isStackConfigured, isClient } = useChatStream({
     apiBaseUrl,
     provider,
     modelName,
@@ -89,10 +89,34 @@ export default function ChatWidget({
     setInput("");
   }
 
+  // Show loading state while waiting for client-side hydration
+  if (!isClient) {
+    return (
+      <div className="flex flex-col h-full bg-white rounded-lg shadow overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          <div className="text-center mt-10">
+            <div className="animate-pulse space-y-3">
+              <div className="w-8 h-8 bg-gray-200 rounded-full mx-auto"></div>
+              <div className="h-4 bg-gray-200 rounded w-48 mx-auto"></div>
+              <div className="h-3 bg-gray-200 rounded w-32 mx-auto"></div>
+            </div>
+          </div>
+        </div>
+        <div className="border-t bg-white p-4 flex gap-3 items-end">
+          <div className="flex-1">
+            <div className="w-full h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+            <div className="h-3 bg-gray-200 rounded w-40 mt-1 animate-pulse"></div>
+          </div>
+          <div className="w-16 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-white rounded-lg shadow overflow-hidden">
-      {/* Configuration Warning */}
-      {!isStackConfigured && (
+      {/* Configuration Warning - Only show after client mounts */}
+      {isClient && !isStackConfigured() && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
           <div className="flex items-center gap-2 text-amber-800 text-sm">
             <span className="text-amber-600">⚠️</span>
