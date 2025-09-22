@@ -1,130 +1,62 @@
 import React, { useState, useEffect } from "react";
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 
 // Define the App component as a single file with all logic and styling
 const App = () => {
-  // Global variables provided by the Canvas environment for Firebase
-  const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-  const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-  const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-  // State to manage Firebase, user and form data
-  const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
-  const [userId, setUserId] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [config, setConfig] = useState(null); // Will hold the Firestore-synced config
+  // State to manage the form configuration
+  const [config, setConfig] = useState({
+    stackApiKey: "",
+    deliveryToken: "",
+    environment: "development",
+    provider: "groq",
+  });
+  
+  const [validationResult, setValidationResult] = useState(null);
 
   useEffect(() => {
-    // This effect runs once to initialize Firebase and set up auth listener
-    const app = initializeApp(firebaseConfig);
-    const authInstance = getAuth(app);
-    const dbInstance = getFirestore(app);
-
-    setAuth(authInstance);
-    setDb(dbInstance);
-
-    const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-      } else {
-        // Sign in anonymously if no user is authenticated
-        const anonUserCredential = await signInAnonymously(authInstance);
-        setUserId(anonUserCredential.user.uid);
-      }
-    });
-
-    return () => unsubscribe();
+    // Load config from localStorage on initial render
+    const savedConfig = {
+      stackApiKey: localStorage.getItem("cs_stackApiKey") || "",
+      deliveryToken: localStorage.getItem("cs_deliveryToken") || "",
+      environment: localStorage.getItem("cs_environment") || "development",
+      provider: localStorage.getItem("cs_provider") || "groq",
+    };
+    setConfig(savedConfig);
   }, []);
 
-  useEffect(() => {
-    // This effect listens for the auth state and loads the configuration from Firestore
-    if (db && userId) {
-      const configDocRef = doc(db, `/artifacts/${appId}/users/${userId}/configs/contentstack`);
-      
-      const unsubscribe = onSnapshot(configDocRef, (docSnap) => {
-        if (docSnap.exists()) {
-          setConfig(docSnap.data());
-        } else {
-          // If the document doesn't exist, use default values
-          setConfig({
-            stackApiKey: "",
-            deliveryToken: "",
-            environment: "development",
-            provider: "groq",
-          });
-        }
-        setLoading(false);
-      }, (error) => {
-        console.error("Error fetching config:", error);
-        setConfig({
-          stackApiKey: "",
-          deliveryToken: "",
-          environment: "development",
-          provider: "groq",
-        });
-        setLoading(false);
-      });
-
-      return () => unsubscribe();
-    }
-  }, [db, userId, appId]);
-
-  const saveConfigToFirestore = async (newConfig) => {
-    if (!db || !userId) {
-      console.error("Firestore or User ID not available.");
-      return;
-    }
-
+  const saveConfigToLocalStorage = (newConfig) => {
     try {
-      const configDocRef = doc(db, `/artifacts/${appId}/users/${userId}/configs/contentstack`);
-      await setDoc(configDocRef, newConfig, { merge: true });
-      return { success: true, message: "Configuration saved to database." };
+      localStorage.setItem("cs_stackApiKey", newConfig.stackApiKey);
+      localStorage.setItem("cs_deliveryToken", newConfig.deliveryToken);
+      localStorage.setItem("cs_environment", newConfig.environment);
+      localStorage.setItem("cs_provider", newConfig.provider);
+      return { success: true, message: "Configuration saved to local storage." };
     } catch (error) {
-      console.error("Error saving config to Firestore:", error);
+      console.error("Error saving config to localStorage:", error);
       return { success: false, message: `Failed to save configuration: ${error.message}` };
     }
   };
-
-  if (loading || !config) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-        <div className="text-center text-gray-500">
-          <svg className="animate-spin h-8 w-8 text-indigo-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <p className="mt-2 text-lg">Loading configuration...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4 font-sans">
       <div className="max-w-md w-full">
         <ConfigForm
           initialConfig={config}
-          onConfigSave={saveConfigToFirestore}
-          userId={userId}
+          onConfigSave={saveConfigToLocalStorage}
+          validationResult={validationResult}
+          setValidationResult={setValidationResult}
         />
-        <div className="mt-4 text-center text-gray-500 text-sm">
-          User ID: <span className="font-mono break-all">{userId}</span>
-        </div>
       </div>
     </div>
   );
 };
 
-const ConfigForm = ({ initialConfig, onConfigSave, userId }) => {
+const ConfigForm = ({ initialConfig, onConfigSave, validationResult, setValidationResult }) => {
   const [config, setConfig] = useState(initialConfig);
   const [isValidating, setIsValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState(null);
+  const apiBaseUrl = "http://localhost:3000";
 
+  // Update local state when initialConfig prop changes
   useEffect(() => {
-    // Update local state when initialConfig prop changes
     if (initialConfig) {
       setConfig(initialConfig);
     }
@@ -144,26 +76,54 @@ const ConfigForm = ({ initialConfig, onConfigSave, userId }) => {
     setIsValidating(true);
     setValidationResult(null);
 
-    // Simulate an API call with a delay
+    // This section is commented out to avoid build errors. 
+    // The fetch call below is for your local environment and can be uncommented
+    // if you have the local server running and want to validate credentials.
+    
+    // try {
+    //   const testResponse = await fetch(`${apiBaseUrl}/chat/validate-stack`, {
+    //     method: 'POST',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify({
+    //       stackApiKey: config.stackApiKey,
+    //       deliveryToken: config.deliveryToken,
+    //       environment: config.environment,
+    //     }),
+    //   });
+
+    //   if (!testResponse.ok) {
+    //     const errorResult = await testResponse.json();
+    //     setValidationResult({ success: false, message: errorResult.error || `Server responded with status: ${testResponse.status}` });
+    //     setIsValidating(false);
+    //     return;
+    //   }
+
+    //   const result = await testResponse.json();
+      
+    //   if (result.success) {
+    //     const saveResult = onConfigSave(config);
+    //     if (saveResult.success) {
+    //       setValidationResult({ success: true, message: "Configuration saved and validated!" });
+    //     } else {
+    //       setValidationResult({ success: false, message: saveResult.message });
+    //     }
+    //   } else {
+    //     setValidationResult({ success: false, message: result.error || "Failed to validate credentials" });
+    //   }
+    // } catch (error) {
+    //   setValidationResult({ success: false, message: "Network error: " + error.message });
+    // } finally {
+    //   setIsValidating(false);
+    // }
+
+    // Simulate validation and saving to demonstrate functionality without a live server
     await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // For demonstration, all credentials are "valid"
-    const validationSuccess = true;
-
-    if (validationSuccess) {
-      const result = await onConfigSave(config);
-      if (result.success) {
-        setValidationResult({ success: true, message: "Configuration saved and validated!" });
-      } else {
-        setValidationResult({ success: false, message: result.message });
-      }
+    const saveResult = onConfigSave(config);
+    if (saveResult.success) {
+      setValidationResult({ success: true, message: "Configuration saved and validated (simulated)!" });
     } else {
-      setValidationResult({ 
-        success: false, 
-        message: "Failed to validate credentials (simulated error)." 
-      });
+      setValidationResult({ success: false, message: saveResult.message });
     }
-
     setIsValidating(false);
   }
 
