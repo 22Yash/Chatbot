@@ -67,10 +67,7 @@ export function useChatStream({ apiBaseUrl, provider, modelName }) {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          // Also send stack config in headers as backup
-          ...(stackConfig && {
-            "x-stack-config": JSON.stringify(stackConfig)
-          })
+          
         },
         body: JSON.stringify(requestBody),
       });
