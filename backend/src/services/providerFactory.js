@@ -1,5 +1,6 @@
 import { OpenAIAdapter } from './openaiAdapter.js';
 import { GroqAdapter } from './groqAdapter.js';
+import { GeminiAdapter } from './geminiAdapter.js';
 
 // Model compatibility mappings
 export const MODEL_MAPPINGS = {
@@ -13,6 +14,10 @@ export const MODEL_MAPPINGS = {
   openai: {
     'llama-3.1-8b-instant': 'gpt-4o-mini',
     'llama-3.1-70b-versatile': 'gpt-4o'
+  },
+  gemini: { 
+    "gpt-4o-mini": "gemini-1.5-flash",
+    "gpt-4o": "gemini-1.5-pro"
   }
 };
 
@@ -20,6 +25,8 @@ export function getProvider(providerName) {
   switch (providerName?.toLowerCase()) {
     case 'groq':
       return new GroqAdapter();
+    case 'gemini':                           // NEW
+      return new GeminiAdapter();
     case 'openai':
     default:
       return new OpenAIAdapter();
