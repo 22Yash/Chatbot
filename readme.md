@@ -47,10 +47,10 @@ I built a **complete Chat Agent Platform** that solves the exact requirements:
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                                         │
                                                         ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │   Contentstack  │    │   LLM Providers │
-                       │      MCP        │    │ OpenAI│Groq│etc │
-                       └─────────────────┘    └─────────────────┘
+                                              ┌─────────────────┐
+                                              │   LLM Providers │
+                                              │ OpenAI│Groq│etc │
+                                              └─────────────────┘
 ```
 
 ---
@@ -194,14 +194,14 @@ npm run build   # Builds the SDK package
 Try these in the live demo:
 
 **Travel Queries:**
-- *"Mumbai tour under 2000"*
+- *"Mumbai tour "*
 - *"Beach destinations in Goa"*
-- *"Adventure tours in Himachal Pradesh"*
+- *"Italy tour"*
 
 **Recipe Queries:**
 - *"Quick veg dinner recipe"*
 - *"Paneer butter masala ingredients"*
-- *"Italian pasta without meat"*
+- *"Veg Manchurain "*
 
 ---
 
@@ -229,14 +229,5 @@ Try these in the live demo:
 MIT © 2025 - Feel free to use this SDK in your projects!
 
 ---
-
-## 🚀 Next Steps
-
-After TechSurf, we plan to:
-- Add support for more content types (Products, Articles, FAQs)
-- Implement conversation memory and context
-- Add analytics dashboard for chat insights
-- Support for voice input/output
-- Mobile SDK for React Native
 
 **Ready to revolutionize how developers build chat agents with Contentstack!** 🎯
