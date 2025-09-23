@@ -8,13 +8,13 @@
 
 > **Challenge:** Build a plug-and-play platform that helps developers create custom chat agents in just a few steps. These agents should be powered by LLMs (like Groq) and work with content stored in Contentstack.
 
-## 🎯 Our Solution
+## 🎯 My Solution
 
-We built a **complete Chat Agent Platform** that solves the exact requirements:
+I built a **complete Chat Agent Platform** that solves the exact requirements:
 
 ### ✅ **LLM Model API** - Backend Service
 - **Streaming Chat API** (`/chat/send`) with real-time token streaming via SSE
-- **Multi-Provider Support** - OpenAI, Groq, Anthropic with automatic fallback
+- **Multi-Provider Support** - OpenAI, Groq , Gemini  with automatic fallback
 - **Contentstack Integration** - Connects to Delivery APIs using MCP to fetch content dynamically
 - **Domain-Specific Querying** - Handles travel tours, recipes, and any Contentstack content type
 
