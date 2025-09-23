@@ -9,7 +9,7 @@ const app = express();
 
 // Middlewares
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3001'],
+  origin: ['http://localhost:5173', 'http://localhost:3001','https://chatbot-0ij7.onrender.com'],
   credentials: true
 }));
 app.use(express.json());
